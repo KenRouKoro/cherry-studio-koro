@@ -3055,7 +3055,18 @@
     "image_placeholder": "無圖片",
     "image_retry": "重試",
     "image_size_options": {
-      "auto": "自動"
+      "auto": "自動",
+      "custom": "自訂"
+    },
+    "image_size_custom_width": "寬",
+    "image_size_custom_height": "高",
+    "image_size_custom_hint": "長邊 ≤ 3840，寬高為 16 的倍數，長寬比 ≤ 3:1，總像素 655,360–8,294,400。",
+    "image_size_error": {
+      "invalid": "請填寫有效的寬高（正整數，格式 寬x高）",
+      "max_edge": "長邊不可超過 3840 像素",
+      "multiple_16": "寬、高均須為 16 的倍數",
+      "ratio": "長邊與短邊之比不可超過 3:1",
+      "pixels": "總像素須在 {{min}} 至 {{max}} 之間（目前 {{current}}）"
     },
     "inference_steps": "推理步數",
     "inference_steps_tip": "要執行的推理步數。步數越多，品質越高但耗時越長",

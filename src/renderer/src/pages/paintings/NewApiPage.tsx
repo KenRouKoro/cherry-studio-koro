@@ -48,6 +48,37 @@ import { checkProviderEnabled } from './utils'
 
 const logger = loggerService.withContext('NewApiPage')
 
+/** gpt-image-2 自定义分辨率（与 OpenAI 文档一致） */
+const GPT_IMAGE2_MODEL = 'gpt-image-2'
+const GPT_IMAGE2_CUSTOM = '__custom__'
+const GPT_IMAGE2_MIN_PX = 655_360
+const GPT_IMAGE2_MAX_PX = 8_294_400
+const GPT_IMAGE2_MAX_EDGE = 3840
+const GPT_IMAGE2_MAX_RATIO = 3
+
+type GptImage2SizeError = 'invalid' | 'max_edge' | 'multiple_16' | 'ratio' | 'pixels'
+
+function parseImageSizePair(size: string): { w: number; h: number } | null {
+  const m = /^(\d+)x(\d+)$/.exec(String(size).trim())
+  if (!m) return null
+  const w = Number(m[1])
+  const h = Number(m[2])
+  if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1) return null
+  return { w, h }
+}
+
+function getGptImage2SizeError(w: number, h: number): GptImage2SizeError | null {
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w < 1 || h < 1) return 'invalid'
+  if (w > GPT_IMAGE2_MAX_EDGE || h > GPT_IMAGE2_MAX_EDGE) return 'max_edge'
+  if (w % 16 !== 0 || h % 16 !== 0) return 'multiple_16'
+  const long = Math.max(w, h)
+  const short = Math.min(w, h)
+  if (long / short > GPT_IMAGE2_MAX_RATIO) return 'ratio'
+  const total = w * h
+  if (total < GPT_IMAGE2_MIN_PX || total > GPT_IMAGE2_MAX_PX) return 'pixels'
+  return null
+}
+
 const NewApiPage: FC<{ Options: string[] }> = ({ Options }) => {
   const [mode, setMode] = useState<keyof PaintingsState>('openai_image_generate')
   const { addPainting, removePainting, updatePainting, openai_image_generate, openai_image_edit } = usePaintings()
@@ -148,6 +179,46 @@ const NewApiPage: FC<{ Options: string[] }> = ({ Options }) => {
     [painting.model]
   )
 
+  const gptImage2PresetSizes = useMemo(
+    () =>
+      new Set(
+        (MODELS.find((m) => m.name === GPT_IMAGE2_MODEL)?.imageSizes ?? [])
+          .map((s) => s.value)
+          .filter((v) => v !== GPT_IMAGE2_CUSTOM)
+      ),
+    []
+  )
+
+  const imageSizeSelectValue = useMemo(() => {
+    if (painting.model !== GPT_IMAGE2_MODEL) return painting.size
+    if (painting.size == null) return painting.size
+    if (painting.size === 'auto' || gptImage2PresetSizes.has(painting.size)) return painting.size
+    if (/^\d+x\d+$/.test(painting.size)) return GPT_IMAGE2_CUSTOM
+    return painting.size
+  }, [painting.model, painting.size, gptImage2PresetSizes])
+
+  const isGptImage2CustomSize = useMemo(
+    () =>
+      painting.model === GPT_IMAGE2_MODEL &&
+      Boolean(painting.size) &&
+      painting.size !== 'auto' &&
+      !gptImage2PresetSizes.has(painting.size!) &&
+      /^\d+x\d+$/.test(painting.size!),
+    [painting.model, painting.size, gptImage2PresetSizes]
+  )
+
+  const gptImage2CustomError = useMemo((): GptImage2SizeError | null => {
+    if (!isGptImage2CustomSize) return null
+    const p = parseImageSizePair(painting.size!)
+    if (!p) return 'invalid'
+    return getGptImage2SizeError(p.w, p.h)
+  }, [isGptImage2CustomSize, painting.size])
+
+  const gptImage2CustomPair = useMemo(() => {
+    if (!isGptImage2CustomSize) return null
+    return parseImageSizePair(painting.size ?? '') ?? { w: 1280, h: 720 }
+  }, [isGptImage2CustomSize, painting.size])
+
   const handleModelChange = (value: string) => {
     const modelConfig = MODELS.find((m) => m.name === value)
     const updates: Partial<PaintingAction> = { model: value }
@@ -162,12 +233,30 @@ const NewApiPage: FC<{ Options: string[] }> = ({ Options }) => {
     if (modelConfig?.moderation?.length) {
       updates.moderation = modelConfig.moderation[0].value
     }
+    if (modelConfig?.background?.length) {
+      const allowed = new Set(modelConfig.background.map((b) => b.value))
+      if (painting.background == null || !allowed.has(painting.background)) {
+        updates.background = modelConfig.background[0].value
+      }
+    }
     updates.n = 1
     updatePaintingState(updates)
   }
 
   const handleSizeChange = (value: string) => {
-    updatePaintingState({ size: value })
+    if (painting.model === GPT_IMAGE2_MODEL && value === GPT_IMAGE2_CUSTOM) {
+      updatePaintingState({ size: '1280x720' })
+    } else {
+      updatePaintingState({ size: value })
+    }
+  }
+
+  const setGptImage2CustomDimension = (dim: 'w' | 'h', n: number | null) => {
+    const prev = parseImageSizePair(painting.size ?? '') ?? { w: 1280, h: 720 }
+    if (n === null || (typeof n === 'number' && Number.isNaN(n))) return
+    const nextW = dim === 'w' ? Math.round(n) : prev.w
+    const nextH = dim === 'h' ? Math.round(n) : prev.h
+    updatePaintingState({ size: `${nextW}x${nextH}` })
   }
 
   const handleQualityChange = (value: string) => {
@@ -247,6 +336,29 @@ const NewApiPage: FC<{ Options: string[] }> = ({ Options }) => {
 
     if (!painting.model || !painting.prompt) {
       return
+    }
+
+    if (painting.model === GPT_IMAGE2_MODEL && painting.size && painting.size !== 'auto') {
+      const pair = parseImageSizePair(painting.size)
+      if (!pair) {
+        window.toast.warning(t('paintings.image_size_error.invalid'))
+        return
+      }
+      const err = getGptImage2SizeError(pair.w, pair.h)
+      if (err) {
+        if (err === 'pixels') {
+          window.toast.warning(
+            t('paintings.image_size_error.pixels', {
+              min: GPT_IMAGE2_MIN_PX.toLocaleString(),
+              max: GPT_IMAGE2_MAX_PX.toLocaleString(),
+              current: (pair.w * pair.h).toLocaleString()
+            })
+          )
+        } else {
+          window.toast.warning(t(`paintings.image_size_error.${err}`))
+        }
+        return
+      }
     }
 
     const controller = new AbortController()
@@ -609,13 +721,50 @@ const NewApiPage: FC<{ Options: string[] }> = ({ Options }) => {
               {selectedModelConfig?.imageSizes && selectedModelConfig.imageSizes.length > 0 && (
                 <>
                   <SettingTitle>{t('paintings.image.size')}</SettingTitle>
-                  <Select value={painting.size} onChange={handleSizeChange} style={{ width: '100%', marginBottom: 15 }}>
+                  <Select
+                    value={imageSizeSelectValue}
+                    onChange={handleSizeChange}
+                    style={{ width: '100%', marginBottom: isGptImage2CustomSize ? 8 : 15 }}>
                     {selectedModelConfig.imageSizes.map((s) => (
                       <Select.Option value={s.value} key={s.value}>
                         {getPaintingsImageSizeOptionsLabel(s.value) ?? s.value}
                       </Select.Option>
                     ))}
                   </Select>
+                  {isGptImage2CustomSize && gptImage2CustomPair && (
+                    <CustomSizeBlock>
+                      <CustomSizeRow>
+                        <span>{t('paintings.image_size_custom_width')}</span>
+                        <InputNumber
+                          min={1}
+                          max={GPT_IMAGE2_MAX_EDGE}
+                          value={gptImage2CustomPair.w}
+                          onChange={(v) => setGptImage2CustomDimension('w', v)}
+                          style={{ flex: 1, minWidth: 0 }}
+                        />
+                        <CustomSizeMult>×</CustomSizeMult>
+                        <span>{t('paintings.image_size_custom_height')}</span>
+                        <InputNumber
+                          min={1}
+                          max={GPT_IMAGE2_MAX_EDGE}
+                          value={gptImage2CustomPair.h}
+                          onChange={(v) => setGptImage2CustomDimension('h', v)}
+                          style={{ flex: 1, minWidth: 0 }}
+                        />
+                      </CustomSizeRow>
+                      <SizeHint $error={Boolean(gptImage2CustomError)}>
+                        {gptImage2CustomError
+                          ? gptImage2CustomError === 'pixels'
+                            ? t('paintings.image_size_error.pixels', {
+                                min: GPT_IMAGE2_MIN_PX.toLocaleString(),
+                                max: GPT_IMAGE2_MAX_PX.toLocaleString(),
+                                current: (gptImage2CustomPair.w * gptImage2CustomPair.h).toLocaleString()
+                              })
+                            : t(`paintings.image_size_error.${gptImage2CustomError}`)
+                          : t('paintings.image_size_custom_hint')}
+                      </SizeHint>
+                    </CustomSizeBlock>
+                  )}
                 </>
               )}
 
@@ -857,6 +1006,37 @@ const ImageSizeImage = styled.img<{ theme: string }>`
   filter: ${({ theme }) => (theme === 'dark' ? 'invert(100%)' : 'none')};
   width: 20px;
   height: 20px;
+`
+
+const CustomSizeBlock = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-bottom: 15px;
+`
+
+const CustomSizeRow = styled.div`
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  width: 100%;
+  font-size: 12px;
+  color: var(--color-text-2, #666);
+`
+
+const CustomSizeMult = styled.span`
+  user-select: none;
+  color: var(--color-text-3, #999);
+  padding: 0 2px;
+`
+
+const SizeHint = styled.div<{ $error: boolean }>`
+  font-size: 12px;
+  line-height: 1.45;
+  color: ${({ $error }) => ($error ? 'var(--color-error, #ff4d4f)' : 'var(--color-text-3, #999)')};
 `
 
 export default NewApiPage

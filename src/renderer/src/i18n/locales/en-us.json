@@ -3055,7 +3055,18 @@
     "image_placeholder": "No image available",
     "image_retry": "Retry",
     "image_size_options": {
-      "auto": "Auto"
+      "auto": "Auto",
+      "custom": "Custom"
+    },
+    "image_size_custom_width": "W",
+    "image_size_custom_height": "H",
+    "image_size_custom_hint": "Max edge ≤ 3840, both sides multiples of 16, aspect ≤ 3:1, total pixels between 655,360 and 8,294,400.",
+    "image_size_error": {
+      "invalid": "Enter a valid width × height (positive integers, format WxH).",
+      "max_edge": "Each side must be at most 3840 pixels.",
+      "multiple_16": "Width and height must be multiples of 16.",
+      "ratio": "Long side ÷ short side must not exceed 3:1.",
+      "pixels": "Total pixels must be between {{min}} and {{max}} (current: {{current}})"
     },
     "inference_steps": "Inference Steps",
     "inference_steps_tip": "The number of inference steps to perform. More steps produce higher quality but take longer",

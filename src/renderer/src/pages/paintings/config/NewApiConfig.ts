@@ -1,7 +1,7 @@
 import type { GeneratePainting } from '@renderer/types'
 import { uuid } from '@renderer/utils'
 
-export const SUPPORTED_MODELS = ['gpt-image-1']
+export const SUPPORTED_MODELS = ['gpt-image-1', 'gpt-image-2']
 
 export const MODELS = [
   {
@@ -14,6 +14,27 @@ export const MODELS = [
     output_compression_format: [{ value: 'jpeg' }, { value: 'webp' }],
     output_format: [{ value: 'image/png' }, { value: 'image/jpeg' }, { value: 'image/webp' }],
     background: [{ value: 'auto' }, { value: 'transparent' }, { value: 'opaque' }]
+  },
+  {
+    name: 'gpt-image-2',
+    group: 'OpenAI',
+    imageSizes: [
+      { value: 'auto' },
+      { value: '1024x1024' },
+      { value: '1536x1024' },
+      { value: '1024x1536' },
+      { value: '2048x2048' },
+      { value: '2048x1152' },
+      { value: '3840x2160' },
+      { value: '2160x3840' },
+      { value: '__custom__' }
+    ],
+    max_images: 10,
+    quality: [{ value: 'auto' }, { value: 'high' }, { value: 'medium' }, { value: 'low' }],
+    moderation: [{ value: 'auto' }, { value: 'low' }],
+    output_compression_format: [{ value: 'jpeg' }, { value: 'webp' }],
+    output_format: [{ value: 'image/png' }, { value: 'image/jpeg' }, { value: 'image/webp' }],
+    background: [{ value: 'auto' }, { value: 'opaque' }]
   }
 ]
 
