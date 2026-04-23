@@ -163,6 +163,12 @@ const NewApiPage: FC<{ Options: string[] }> = ({ Options }) => {
     if (modelConfig?.moderation?.length) {
       updates.moderation = modelConfig.moderation[0].value
     }
+    if (modelConfig?.background?.length) {
+      const allowed = new Set(modelConfig.background.map((b) => b.value))
+      if (painting.background && !allowed.has(painting.background)) {
+        updates.background = modelConfig.background[0].value
+      }
+    }
     updates.n = 1
     updatePaintingState(updates)
   }
